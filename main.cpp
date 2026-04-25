@@ -1,6 +1,10 @@
 #include <iostream>
 #include <string>
 #include <cstring>
+#include <fstream>
+#include <sstream>
+#include <locale>
+#include <codecvt>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -19,6 +23,7 @@ void printUsage(const char* programName) {
     std::cerr << "选项:" << std::endl;
     std::cerr << "  -f, --format <格式>  指定输出格式" << std::endl;
     std::cerr << "                          可用格式: text (默认), csv, json" << std::endl;
+    std::cerr << "  -o, --output <路径>  指定输出文件路径（默认输出到控制台）" << std::endl;
     std::cerr << "  -h, --help            显示此帮助信息" << std::endl;
     std::cerr << std::endl;
     std::cerr << "输出格式说明:" << std::endl;
@@ -30,6 +35,8 @@ void printUsage(const char* programName) {
     std::cerr << "  " << programName << " example.txt" << std::endl;
     std::cerr << "  " << programName << " -f csv example.txt" << std::endl;
     std::cerr << "  " << programName << " --format json /path/to/file.txt" << std::endl;
+    std::cerr << "  " << programName << " -f csv -o output.csv example.txt" << std::endl;
+    std::cerr << "  " << programName << " --output result.json --format json example.txt" << std::endl;
 }
 
 #ifdef _WIN32
@@ -41,6 +48,7 @@ int wmain(int argc, wchar_t* argv[]) {
 
     OutputFormat outputFormat = OutputFormat::TEXT;
     std::wstring filepathW;
+    std::wstring outputFileW;
     std::string programNameUtf8 = encoding_utils::wideToUtf8(argv[0]);
 
     if (argc < 2) {
@@ -74,6 +82,14 @@ int wmain(int argc, wchar_t* argv[]) {
                 return 1;
             }
             i += 2;
+        } else if (argUtf8 == "-o" || argUtf8 == "--output") {
+            if (i + 1 >= argc) {
+                std::cerr << "错误: 输出选项缺少参数" << std::endl;
+                printUsage(programNameUtf8.c_str());
+                return 1;
+            }
+            outputFileW = argv[i + 1];
+            i += 2;
         } else if (argUtf8.length() > 0 && argUtf8[0] == '-') {
             std::cerr << "错误: 未知选项 '" << argUtf8 << "'" << std::endl;
             printUsage(programNameUtf8.c_str());
@@ -99,7 +115,25 @@ int wmain(int argc, wchar_t* argv[]) {
 
     OutputFormatter formatter;
     formatter.setFormat(outputFormat);
-    formatter.output(stats.getStatistics());
+
+    if (!outputFileW.empty()) {
+        std::string outputFileUtf8 = encoding_utils::wideToUtf8(outputFileW);
+        std::wofstream outFile;
+        outFile.imbue(std::locale(std::locale(), new std::codecvt_utf8<wchar_t>));
+        outFile.open(outputFileW, std::ios::binary | std::ios::out);
+        if (!outFile.is_open()) {
+            std::cerr << "错误: 无法打开输出文件 '" << outputFileUtf8 << "'" << std::endl;
+            return 1;
+        }
+        std::ostringstream oss;
+        formatter.output(stats.getStatistics(), oss);
+        std::string outputStr = oss.str();
+        outFile << encoding_utils::utf8ToWide(outputStr);
+        outFile.close();
+        std::cout << "输出已保存到: " << outputFileUtf8 << std::endl;
+    } else {
+        formatter.output(stats.getStatistics());
+    }
 
     return 0;
 }
@@ -107,6 +141,7 @@ int wmain(int argc, wchar_t* argv[]) {
 int main(int argc, char* argv[]) {
     OutputFormat outputFormat = OutputFormat::TEXT;
     std::string filepath;
+    std::string outputFile;
 
     if (argc < 2) {
         printUsage(argv[0]);
@@ -137,6 +172,14 @@ int main(int argc, char* argv[]) {
                 return 1;
             }
             i += 2;
+        } else if (std::strcmp(argv[i], "-o") == 0 || std::strcmp(argv[i], "--output") == 0) {
+            if (i + 1 >= argc) {
+                std::cerr << "错误: 输出选项缺少参数" << std::endl;
+                printUsage(argv[0]);
+                return 1;
+            }
+            outputFile = argv[i + 1];
+            i += 2;
         } else if (argv[i][0] == '-') {
             std::cerr << "错误: 未知选项 '" << argv[i] << "'" << std::endl;
             printUsage(argv[0]);
@@ -161,7 +204,19 @@ int main(int argc, char* argv[]) {
 
     OutputFormatter formatter;
     formatter.setFormat(outputFormat);
-    formatter.output(stats.getStatistics());
+
+    if (!outputFile.empty()) {
+        std::ofstream outFile(outputFile, std::ios::binary | std::ios::out);
+        if (!outFile.is_open()) {
+            std::cerr << "错误: 无法打开输出文件 '" << outputFile << "'" << std::endl;
+            return 1;
+        }
+        formatter.output(stats.getStatistics(), outFile);
+        outFile.close();
+        std::cout << "输出已保存到: " << outputFile << std::endl;
+    } else {
+        formatter.output(stats.getStatistics());
+    }
 
     return 0;
 }
