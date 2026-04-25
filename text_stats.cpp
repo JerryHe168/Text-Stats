@@ -6,6 +6,7 @@
 #include <cstring>
 #include <algorithm>
 #include <limits>
+#include <queue>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -491,23 +492,48 @@ void TextStats::countWordStats(const std::string& content) {
     stats_.word_stats.total_words = totalWords;
     stats_.word_stats.unique_words = static_cast<uint64_t>(wordCount.size());
 
-    std::vector<std::pair<std::string, uint64_t>> wordsVec(wordCount.begin(), wordCount.end());
+    auto compare = [](const std::pair<std::string, uint64_t>& a,
+                      const std::pair<std::string, uint64_t>& b) {
+        if (a.second != b.second) {
+            return a.second > b.second;
+        }
+        return a.first < b.first;
+    };
 
-    std::sort(wordsVec.begin(), wordsVec.end(),
-        [](const std::pair<std::string, uint64_t>& a,
-           const std::pair<std::string, uint64_t>& b) {
-            if (a.second != b.second) {
-                return a.second > b.second;
+    std::priority_queue<
+        std::pair<std::string, uint64_t>,
+        std::vector<std::pair<std::string, uint64_t>>,
+        decltype(compare)
+    > minHeap(compare);
+
+    const size_t TOP_COUNT = 10;
+
+    for (const auto& pair : wordCount) {
+        if (minHeap.size() < TOP_COUNT) {
+            minHeap.push(pair);
+        } else {
+            const auto& topPair = minHeap.top();
+            if (pair.second > topPair.second ||
+                (pair.second == topPair.second && pair.first < topPair.first)) {
+                minHeap.pop();
+                minHeap.push(pair);
             }
-            return a.first < b.first;
-        });
+        }
+    }
+
+    std::vector<std::pair<std::string, uint64_t>> wordsVec;
+    while (!minHeap.empty()) {
+        wordsVec.push_back(minHeap.top());
+        minHeap.pop();
+    }
+
+    std::reverse(wordsVec.begin(), wordsVec.end());
 
     stats_.word_stats.top_words.clear();
-    size_t count = std::min(static_cast<size_t>(10), wordsVec.size());
-    for (size_t i = 0; i < count; ++i) {
+    for (const auto& pair : wordsVec) {
         WordFrequency wf;
-        wf.word = wordsVec[i].first;
-        wf.count = wordsVec[i].second;
+        wf.word = pair.first;
+        wf.count = pair.second;
         stats_.word_stats.top_words.push_back(wf);
     }
 }
