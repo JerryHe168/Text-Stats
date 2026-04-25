@@ -4,6 +4,8 @@
 #include <sstream>
 #include <cctype>
 #include <cstring>
+#include <algorithm>
+#include <limits>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -17,6 +19,8 @@ TextStats::TextStats() {
 void TextStats::reset() {
     std::memset(&stats_, 0, sizeof(stats_));
     stats_.file_info.encoding = Encoding::UNKNOWN;
+    stats_.line_stats.shortest_line_length = std::numeric_limits<uint64_t>::max();
+    stats_.word_stats.top_words.clear();
 }
 
 #ifdef _WIN32
@@ -57,6 +61,9 @@ bool TextStats::analyzeFile(const std::wstring& filepath) {
         countBasicStats(content);
         countCategoryStats(content);
     }
+
+    countLineStats(content);
+    countWordStats(content);
 
     return true;
 }
@@ -117,6 +124,9 @@ bool TextStats::analyzeFile(const std::string& filepath) {
         countBasicStats(content);
         countCategoryStats(content);
     }
+
+    countLineStats(content);
+    countWordStats(content);
 
     return true;
 }
@@ -384,4 +394,120 @@ void TextStats::countUTF8Stats(const std::string& content) {
 
 const TextStatistics& TextStats::getStatistics() const {
     return stats_;
+}
+
+void TextStats::countLineStats(const std::string& content) {
+    if (content.empty()) {
+        stats_.line_stats.total_lines = 0;
+        stats_.line_stats.non_empty_lines = 0;
+        stats_.line_stats.longest_line_length = 0;
+        stats_.line_stats.shortest_line_length = 0;
+        stats_.line_stats.average_line_length = 0.0;
+        return;
+    }
+
+    stats_.line_stats.total_lines = stats_.basic_stats.total_lines;
+    stats_.line_stats.non_empty_lines = stats_.basic_stats.non_empty_lines;
+
+    uint64_t currentLineLength = 0;
+    uint64_t totalLineLength = 0;
+    uint64_t lineCount = 0;
+
+    for (size_t i = 0; i < content.size(); ++i) {
+        unsigned char c = static_cast<unsigned char>(content[i]);
+
+        if (c == '\n') {
+            if (lineCount > 0 || currentLineLength > 0) {
+                if (currentLineLength > stats_.line_stats.longest_line_length) {
+                    stats_.line_stats.longest_line_length = currentLineLength;
+                }
+                if (currentLineLength < stats_.line_stats.shortest_line_length) {
+                    stats_.line_stats.shortest_line_length = currentLineLength;
+                }
+                totalLineLength += currentLineLength;
+                lineCount++;
+            }
+            currentLineLength = 0;
+        } else if (c != '\r') {
+            currentLineLength++;
+        }
+    }
+
+    if (currentLineLength > 0 || (content.back() != '\n' && lineCount > 0)) {
+        if (currentLineLength > stats_.line_stats.longest_line_length) {
+            stats_.line_stats.longest_line_length = currentLineLength;
+        }
+        if (currentLineLength < stats_.line_stats.shortest_line_length) {
+            stats_.line_stats.shortest_line_length = currentLineLength;
+        }
+        totalLineLength += currentLineLength;
+        lineCount++;
+    }
+
+    if (lineCount == 0 && !content.empty()) {
+        lineCount = 1;
+        totalLineLength = content.size();
+        stats_.line_stats.longest_line_length = content.size();
+        stats_.line_stats.shortest_line_length = content.size();
+    }
+
+    if (lineCount > 0) {
+        stats_.line_stats.average_line_length = static_cast<double>(totalLineLength) / lineCount;
+    } else {
+        stats_.line_stats.longest_line_length = 0;
+        stats_.line_stats.shortest_line_length = 0;
+        stats_.line_stats.average_line_length = 0.0;
+    }
+}
+
+void TextStats::countWordStats(const std::string& content) {
+    std::unordered_map<std::string, uint64_t> wordCount;
+    std::string currentWord;
+
+    for (size_t i = 0; i < content.size(); ++i) {
+        unsigned char c = static_cast<unsigned char>(content[i]);
+
+        bool isWordChar = std::isalnum(c) || c == '_' || c == '\'';
+
+        if (isWordChar) {
+            currentWord += static_cast<char>(std::tolower(c));
+        } else {
+            if (!currentWord.empty()) {
+                wordCount[currentWord]++;
+                currentWord.clear();
+            }
+        }
+    }
+
+    if (!currentWord.empty()) {
+        wordCount[currentWord]++;
+    }
+
+    uint64_t totalWords = 0;
+    for (const auto& pair : wordCount) {
+        totalWords += pair.second;
+    }
+
+    stats_.word_stats.total_words = totalWords;
+    stats_.word_stats.unique_words = static_cast<uint64_t>(wordCount.size());
+
+    std::vector<std::pair<std::string, uint64_t>> wordsVec(wordCount.begin(), wordCount.end());
+
+    std::sort(wordsVec.begin(), wordsVec.end(),
+        [](const std::pair<std::string, uint64_t>& a,
+           const std::pair<std::string, uint64_t>& b) {
+            if (a.second != b.second) {
+                return a.second > b.second;
+            }
+            return a.first < b.first;
+        });
+
+    stats_.word_stats.top_words.clear();
+    size_t count = std::min(static_cast<size_t>(10), wordsVec.size());
+    for (size_t i = 0; i < count; ++i) {
+        WordFrequency wf;
+        wf.word = wordsVec[i].first;
+        wf.count = wordsVec[i].second;
+        stats_.word_stats.top_words.push_back(wf);
+    }
 }
