@@ -3,6 +3,8 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
+#include <unordered_map>
 
 enum class Encoding {
     UNKNOWN,
@@ -20,6 +22,25 @@ struct BasicStats {
     uint64_t chars_without_whitespace;
     uint64_t total_lines;
     uint64_t non_empty_lines;
+};
+
+struct LineStats {
+    uint64_t total_lines;
+    uint64_t non_empty_lines;
+    uint64_t longest_line_length;
+    uint64_t shortest_line_length;
+    double average_line_length;
+};
+
+struct WordFrequency {
+    std::string word;
+    uint64_t count;
+};
+
+struct WordStats {
+    uint64_t total_words;
+    uint64_t unique_words;
+    std::vector<WordFrequency> top_words;
 };
 
 struct CategoryStats {
@@ -42,6 +63,8 @@ struct TextStatistics {
     FileInfo file_info;
     BasicStats basic_stats;
     CategoryStats category_stats;
+    LineStats line_stats;
+    WordStats word_stats;
 };
 
 class TextStats {
@@ -67,6 +90,9 @@ private:
     void countBasicStats(const std::string& content);
     void countCategoryStats(const std::string& content);
     void countUTF8Stats(const std::string& content);
+
+    void countLineStats(const std::string& content);
+    void countWordStats(const std::string& content);
 };
 
 #endif // TEXT_STATS_H

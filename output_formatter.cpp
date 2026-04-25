@@ -2,6 +2,7 @@
 #include <iomanip>
 #include <sstream>
 #include <algorithm>
+#include <limits>
 
 void OutputFormatter::setFormat(OutputFormat format) {
     format_ = format;
@@ -110,6 +111,47 @@ void OutputFormatter::outputText(const TextStatistics& stats, std::ostream& os) 
        << std::right << std::setw(valueWidth) << stats.category_stats.chinese << std::endl;
     os << std::endl;
 
+    os << "【行统计】" << std::endl;
+    os << std::string(50, '-') << std::endl;
+    os << std::left << std::setw(labelWidth) << "总行数:"
+       << std::right << std::setw(valueWidth) << stats.line_stats.total_lines << std::endl;
+    os << std::left << std::setw(labelWidth) << "非空行数:"
+       << std::right << std::setw(valueWidth) << stats.line_stats.non_empty_lines << std::endl;
+    os << std::left << std::setw(labelWidth) << "最长行长度:"
+       << std::right << std::setw(valueWidth) << stats.line_stats.longest_line_length << std::endl;
+    if (stats.line_stats.shortest_line_length == std::numeric_limits<uint64_t>::max()) {
+        os << std::left << std::setw(labelWidth) << "最短行长度:"
+           << std::right << std::setw(valueWidth) << "0" << std::endl;
+    } else {
+        os << std::left << std::setw(labelWidth) << "最短行长度:"
+           << std::right << std::setw(valueWidth) << stats.line_stats.shortest_line_length << std::endl;
+    }
+    os << std::left << std::setw(labelWidth) << "平均行长度:"
+       << std::right << std::setw(valueWidth) << std::fixed << std::setprecision(2)
+       << stats.line_stats.average_line_length << std::endl;
+    os << std::endl;
+
+    os << "【单词统计】" << std::endl;
+    os << std::string(50, '-') << std::endl;
+    os << std::left << std::setw(labelWidth) << "单词总数:"
+       << std::right << std::setw(valueWidth) << stats.word_stats.total_words << std::endl;
+    os << std::left << std::setw(labelWidth) << "唯一单词数:"
+       << std::right << std::setw(valueWidth) << stats.word_stats.unique_words << std::endl;
+    os << std::endl;
+
+    if (!stats.word_stats.top_words.empty()) {
+        os << "【最常见单词 TOP 10】" << std::endl;
+        os << std::string(50, '-') << std::endl;
+        for (size_t i = 0; i < stats.word_stats.top_words.size(); ++i) {
+            const auto& wf = stats.word_stats.top_words[i];
+            std::ostringstream label;
+            label << (i + 1) << ". " << wf.word;
+            os << std::left << std::setw(labelWidth) << label.str()
+               << std::right << std::setw(valueWidth) << wf.count << " 次" << std::endl;
+        }
+        os << std::endl;
+    }
+
     os << std::string(50, '=') << std::endl;
 }
 
@@ -149,6 +191,27 @@ void OutputFormatter::outputCSV(const TextStatistics& stats, std::ostream& os) {
     os << "分类统计,数字," << stats.category_stats.digits << std::endl;
     os << "分类统计,标点符号," << stats.category_stats.punctuations << std::endl;
     os << "分类统计,中文字符," << stats.category_stats.chinese << std::endl;
+
+    os << "行统计,总行数," << stats.line_stats.total_lines << std::endl;
+    os << "行统计,非空行数," << stats.line_stats.non_empty_lines << std::endl;
+    os << "行统计,最长行长度," << stats.line_stats.longest_line_length << std::endl;
+    if (stats.line_stats.shortest_line_length == std::numeric_limits<uint64_t>::max()) {
+        os << "行统计,最短行长度,0" << std::endl;
+    } else {
+        os << "行统计,最短行长度," << stats.line_stats.shortest_line_length << std::endl;
+    }
+    os << "行统计,平均行长度," << std::fixed << std::setprecision(2)
+       << stats.line_stats.average_line_length << std::endl;
+
+    os << "单词统计,单词总数," << stats.word_stats.total_words << std::endl;
+    os << "单词统计,唯一单词数," << stats.word_stats.unique_words << std::endl;
+
+    for (size_t i = 0; i < stats.word_stats.top_words.size(); ++i) {
+        const auto& wf = stats.word_stats.top_words[i];
+        std::ostringstream label;
+        label << "最常见单词 TOP " << (i + 1);
+        os << "单词统计," << label.str() << "," << quoteString(wf.word) << " (" << wf.count << "次)" << std::endl;
+    }
 }
 
 void OutputFormatter::outputJSON(const TextStatistics& stats, std::ostream& os) {
@@ -175,6 +238,37 @@ void OutputFormatter::outputJSON(const TextStatistics& stats, std::ostream& os) 
     os << "    \"digits\": " << stats.category_stats.digits << "," << std::endl;
     os << "    \"punctuations\": " << stats.category_stats.punctuations << "," << std::endl;
     os << "    \"chinese\": " << stats.category_stats.chinese << std::endl;
+    os << "  }," << std::endl;
+
+    os << "  \"line_stats\": {" << std::endl;
+    os << "    \"total_lines\": " << stats.line_stats.total_lines << "," << std::endl;
+    os << "    \"non_empty_lines\": " << stats.line_stats.non_empty_lines << "," << std::endl;
+    os << "    \"longest_line_length\": " << stats.line_stats.longest_line_length << "," << std::endl;
+    if (stats.line_stats.shortest_line_length == std::numeric_limits<uint64_t>::max()) {
+        os << "    \"shortest_line_length\": 0," << std::endl;
+    } else {
+        os << "    \"shortest_line_length\": " << stats.line_stats.shortest_line_length << "," << std::endl;
+    }
+    os << "    \"average_line_length\": " << std::fixed << std::setprecision(2)
+       << stats.line_stats.average_line_length << std::endl;
+    os << "  }," << std::endl;
+
+    os << "  \"word_stats\": {" << std::endl;
+    os << "    \"total_words\": " << stats.word_stats.total_words << "," << std::endl;
+    os << "    \"unique_words\": " << stats.word_stats.unique_words << "," << std::endl;
+    os << "    \"top_words\": [" << std::endl;
+    for (size_t i = 0; i < stats.word_stats.top_words.size(); ++i) {
+        const auto& wf = stats.word_stats.top_words[i];
+        os << "      {" << std::endl;
+        os << "        \"word\": \"" << jsonEscape(wf.word) << "\"," << std::endl;
+        os << "        \"count\": " << wf.count << std::endl;
+        os << "      }";
+        if (i < stats.word_stats.top_words.size() - 1) {
+            os << ",";
+        }
+        os << std::endl;
+    }
+    os << "    ]" << std::endl;
     os << "  }" << std::endl;
     os << "}" << std::endl;
 }
