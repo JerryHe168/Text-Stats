@@ -349,14 +349,6 @@ void TextStats::countUTF8Stats(const std::string& content) {
             if (!inLine && !isWhitespace) inLine = true;
         }
 
-        if (codepoint == '\n') {
-            stats_.basic_stats.total_lines++;
-            if (inLine) {
-                stats_.basic_stats.non_empty_lines++;
-                inLine = false;
-            }
-        }
-
         i += charLen;
     }
 
