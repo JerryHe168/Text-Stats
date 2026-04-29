@@ -6,6 +6,7 @@
 #include <vector>
 #include <unordered_map>
 #include <cstddef>
+#include <functional>
 
 namespace TextStatsConstants {
     constexpr size_t BOM_UTF8_LENGTH = 3;
@@ -76,6 +77,12 @@ struct TextStatistics {
     WordStats word_stats;
 };
 
+struct UnicodeChar {
+    uint32_t codepoint;
+    size_t byte_length;
+    bool valid;
+};
+
 class TextStats {
 public:
     TextStats();
@@ -92,18 +99,43 @@ public:
 
     void reset();
 
+    static bool isUnicodeLetter(uint32_t codepoint);
+    static bool isUnicodeDigit(uint32_t codepoint);
+    static bool isUnicodeWhitespace(uint32_t codepoint);
+    static bool isUnicodePunctuation(uint32_t codepoint);
+    static uint32_t unicodeToLower(uint32_t codepoint);
+    static std::string codepointToUTF8(uint32_t codepoint);
+
 private:
     TextStatistics stats_;
     uint64_t max_file_size_;
 
     Encoding detectEncoding(const std::string& content) const;
     bool isUTF8Valid(const std::string& content) const;
-    bool isChineseChar(uint32_t codepoint) const;
-    bool isWordChar(uint32_t codepoint) const;
-    char toLowerChar(uint32_t codepoint) const;
 
-    void countAllStats(const std::string& content);
+    UnicodeChar decodeUTF8(const std::string& content, size_t offset) const;
+    UnicodeChar decodeUTF16LE(const std::string& content, size_t offset) const;
+    UnicodeChar decodeUTF16BE(const std::string& content, size_t offset) const;
+    UnicodeChar decodeUTF32LE(const std::string& content, size_t offset) const;
+    UnicodeChar decodeUTF32BE(const std::string& content, size_t offset) const;
+    UnicodeChar decodeChar(const std::string& content, size_t offset, Encoding encoding) const;
+
+    void processAllEncodings(const std::string& content);
+    void countStatsFromCodepoint(uint32_t codepoint, 
+                                   bool& inLine,
+                                   uint64_t& currentLineLength,
+                                   uint64_t& totalLineLength,
+                                   uint64_t& lineCount,
+                                   std::string& currentWord,
+                                   std::unordered_map<std::string, uint64_t>& wordCount);
+
     void calculateTopWords(const std::unordered_map<std::string, uint64_t>& wordCount);
+    void finalizeLineStats(uint32_t lastCodepoint,
+                           bool inLine,
+                           uint64_t currentLineLength,
+                           uint64_t totalLineLength,
+                           uint64_t lineCount,
+                           uint64_t charCount);
 
     bool analyzeContent(const std::string& filepath, const std::string& content, uint64_t fileSize);
 };
