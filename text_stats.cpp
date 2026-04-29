@@ -17,49 +17,181 @@
 using namespace TextStatsConstants;
 
 namespace {
+    struct UnicodeRange {
+        uint32_t start;
+        uint32_t end;
+    };
+
+    const UnicodeRange UNICODE_LETTER_RANGES[] = {
+        {0x0041, 0x005A},
+        {0x0061, 0x007A},
+        {0x00C0, 0x00D6},
+        {0x00D8, 0x00F6},
+        {0x00F8, 0x02B8},
+        {0x0370, 0x03FF},
+        {0x0400, 0x04FF},
+        {0x0500, 0x052F},
+        {0x0530, 0x058F},
+        {0x0590, 0x05FF},
+        {0x0600, 0x06FF},
+        {0x0700, 0x074F},
+        {0x0750, 0x077F},
+        {0x0780, 0x07BF},
+        {0x07C0, 0x07FF},
+        {0x0900, 0x097F},
+        {0x0980, 0x09FF},
+        {0x0A00, 0x0A7F},
+        {0x0A80, 0x0AFF},
+        {0x0B00, 0x0B7F},
+        {0x0B80, 0x0BFF},
+        {0x0C00, 0x0C7F},
+        {0x0C80, 0x0CFF},
+        {0x0D00, 0x0D7F},
+        {0x0D80, 0x0DFF},
+        {0x0E00, 0x0E7F},
+        {0x0E80, 0x0EFF},
+        {0x0F00, 0x0FFF},
+        {0x1040, 0x1049},
+        {0x1090, 0x1099},
+        {0x1100, 0x11FF},
+        {0x17E0, 0x17E9},
+        {0x1810, 0x1819},
+        {0x1946, 0x194F},
+        {0x19D0, 0x19D9},
+        {0x1A80, 0x1A89},
+        {0x1A90, 0x1A99},
+        {0x1B50, 0x1B59},
+        {0x1BB0, 0x1BB9},
+        {0x1C40, 0x1C49},
+        {0x1C50, 0x1C59},
+        {0x1E00, 0x1EFF},
+        {0x2F800, 0x2FA1F},
+        {0x3041, 0x309F},
+        {0x30A1, 0x30FF},
+        {0x3130, 0x318F},
+        {0x31F0, 0x31FF},
+        {0x3400, 0x4DBF},
+        {0x4E00, 0x9FFF},
+        {0xA620, 0xA629},
+        {0xA8D0, 0xA8D9},
+        {0xA900, 0xA909},
+        {0xA960, 0xA97F},
+        {0xA9D0, 0xA9D9},
+        {0xAA50, 0xAA59},
+        {0xABF0, 0xABF9},
+        {0xAC00, 0xD7A3},
+        {0xD7B0, 0xD7FF},
+        {0xF900, 0xFAFF},
+        {0x10000, 0x1FFFD},
+        {0x20000, 0x2FFFD},
+        {0x30000, 0x3FFFD},
+    };
+    constexpr size_t UNICODE_LETTER_RANGE_COUNT = sizeof(UNICODE_LETTER_RANGES) / sizeof(UNICODE_LETTER_RANGES[0]);
+
+    const UnicodeRange UNICODE_DIGIT_RANGES[] = {
+        {0x0030, 0x0039},
+        {0x0660, 0x0669},
+        {0x06F0, 0x06F9},
+        {0x07C0, 0x07C9},
+        {0x0966, 0x096F},
+        {0x09E6, 0x09EF},
+        {0x0A66, 0x0A6F},
+        {0x0AE6, 0x0AEF},
+        {0x0B66, 0x0B6F},
+        {0x0BE6, 0x0BEF},
+        {0x0C66, 0x0C6F},
+        {0x0CE6, 0x0CEF},
+        {0x0D66, 0x0D6F},
+        {0x0E50, 0x0E59},
+        {0x0ED0, 0x0ED9},
+        {0x0F20, 0x0F29},
+        {0x1040, 0x1049},
+        {0x1090, 0x1099},
+        {0x17E0, 0x17E9},
+        {0x1810, 0x1819},
+        {0x1946, 0x194F},
+        {0x19D0, 0x19D9},
+        {0x1A80, 0x1A89},
+        {0x1A90, 0x1A99},
+        {0x1B50, 0x1B59},
+        {0x1BB0, 0x1BB9},
+        {0x1C40, 0x1C49},
+        {0x1C50, 0x1C59},
+        {0xA620, 0xA629},
+        {0xA8D0, 0xA8D9},
+        {0xA900, 0xA909},
+        {0xA9D0, 0xA9D9},
+        {0xAA50, 0xAA59},
+        {0xABF0, 0xABF9},
+        {0xFF10, 0xFF19},
+    };
+    constexpr size_t UNICODE_DIGIT_RANGE_COUNT = sizeof(UNICODE_DIGIT_RANGES) / sizeof(UNICODE_DIGIT_RANGES[0]);
+
+    const UnicodeRange UNICODE_PUNCTUATION_RANGES[] = {
+        {0x0021, 0x002F},
+        {0x003A, 0x0040},
+        {0x005B, 0x0060},
+        {0x007B, 0x007E},
+        {0x00A1, 0x00A1},
+        {0x00AB, 0x00BB},
+        {0x00BF, 0x00BF},
+        {0x2010, 0x2027},
+        {0x2018, 0x2019},
+        {0x201C, 0x201D},
+        {0x2030, 0x204E},
+        {0x3001, 0x3003},
+        {0x3008, 0x3011},
+        {0x3014, 0x301F},
+        {0xFF01, 0xFF0F},
+        {0xFF1A, 0xFF20},
+        {0xFF3B, 0xFF40},
+        {0xFF5B, 0xFF65},
+    };
+    constexpr size_t UNICODE_PUNCTUATION_RANGE_COUNT = sizeof(UNICODE_PUNCTUATION_RANGES) / sizeof(UNICODE_PUNCTUATION_RANGES[0]);
+
+    const UnicodeRange UNICODE_WHITESPACE_RANGES[] = {
+        {0x0009, 0x000D},
+        {0x0020, 0x0020},
+        {0x00A0, 0x00A0},
+        {0x1680, 0x1680},
+        {0x2000, 0x200A},
+        {0x2028, 0x2029},
+        {0x202F, 0x202F},
+        {0x205F, 0x205F},
+        {0x3000, 0x3000},
+    };
+    constexpr size_t UNICODE_WHITESPACE_RANGE_COUNT = sizeof(UNICODE_WHITESPACE_RANGES) / sizeof(UNICODE_WHITESPACE_RANGES[0]);
+
+    bool binarySearchRange(uint32_t codepoint, const UnicodeRange* ranges, size_t rangeCount) {
+        if (rangeCount == 0) {
+            return false;
+        }
+
+        int low = 0;
+        int high = static_cast<int>(rangeCount) - 1;
+
+        while (low <= high) {
+            int mid = low + (high - low) / 2;
+            const UnicodeRange& range = ranges[mid];
+
+            if (codepoint < range.start) {
+                high = mid - 1;
+            } else if (codepoint > range.end) {
+                low = mid + 1;
+            } else {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     uint64_t calculateTotalWords(const std::unordered_map<std::string, uint64_t>& wordCount) {
         uint64_t total = 0;
         for (const auto& pair : wordCount) {
             total += pair.second;
         }
         return total;
-    }
-
-    bool isChineseChar(uint32_t codepoint) {
-        return (codepoint >= 0x4E00 && codepoint <= 0x9FFF) ||
-               (codepoint >= 0x3400 && codepoint <= 0x4DBF) ||
-               (codepoint >= 0x20000 && codepoint <= 0x2A6DF) ||
-               (codepoint >= 0x2A700 && codepoint <= 0x2B73F) ||
-               (codepoint >= 0x2B740 && codepoint <= 0x2B81F) ||
-               (codepoint >= 0x2B820 && codepoint <= 0x2CEAF);
-    }
-
-    bool isCJKUnifiedIdeograph(uint32_t codepoint) {
-        return isChineseChar(codepoint);
-    }
-
-    bool isCJKCompatibilityIdeograph(uint32_t codepoint) {
-        return (codepoint >= 0xF900 && codepoint <= 0xFAFF) ||
-               (codepoint >= 0x2F800 && codepoint <= 0x2FA1F);
-    }
-
-    bool isHiragana(uint32_t codepoint) {
-        return (codepoint >= 0x3041 && codepoint <= 0x3096) ||
-               (codepoint >= 0x3099 && codepoint <= 0x309F);
-    }
-
-    bool isKatakana(uint32_t codepoint) {
-        return (codepoint >= 0x30A1 && codepoint <= 0x30FA) ||
-               (codepoint >= 0x30FD && codepoint <= 0x30FF) ||
-               (codepoint >= 0x31F0 && codepoint <= 0x31FF);
-    }
-
-    bool isHangul(uint32_t codepoint) {
-        return (codepoint >= 0xAC00 && codepoint <= 0xD7A3) ||
-               (codepoint >= 0x1100 && codepoint <= 0x11FF) ||
-               (codepoint >= 0x3130 && codepoint <= 0x318F) ||
-               (codepoint >= 0xA960 && codepoint <= 0xA97F) ||
-               (codepoint >= 0xD7B0 && codepoint <= 0xD7FF);
     }
 }
 
@@ -83,6 +215,57 @@ void TextStats::reset() {
     stats_.word_stats.top_words.clear();
 }
 
+#ifdef _WIN32
+namespace {
+    struct FileReadResult {
+        std::string content;
+        uint64_t fileSize;
+        bool success;
+    };
+
+    FileReadResult readFileContent(const std::wstring& filepath, uint64_t maxFileSize) {
+        FileReadResult result;
+        result.fileSize = 0;
+        result.success = false;
+
+        FILE* file = _wfopen(filepath.c_str(), L"rb");
+        if (!file) {
+            return result;
+        }
+
+        fseek(file, 0, SEEK_END);
+        long fileSizeLong = ftell(file);
+        fseek(file, 0, SEEK_SET);
+
+        if (fileSizeLong < 0) {
+            fclose(file);
+            return result;
+        }
+
+        uint64_t fileSize = static_cast<uint64_t>(fileSizeLong);
+        result.fileSize = fileSize;
+
+        if (fileSize > maxFileSize) {
+            fclose(file);
+            return result;
+        }
+
+        if (fileSize > 0) {
+            result.content.resize(static_cast<size_t>(fileSize), '\0');
+            if (fread(&result.content[0], 1, static_cast<size_t>(fileSize), file) != static_cast<size_t>(fileSize)) {
+                fclose(file);
+                result.content.clear();
+                return result;
+            }
+        }
+
+        fclose(file);
+        result.success = true;
+        return result;
+    }
+}
+#endif
+
 bool TextStats::analyzeContent(const std::string& filepath, const std::string& content, uint64_t fileSize) {
     stats_.file_info.file_path = filepath;
     stats_.file_info.file_size = fileSize;
@@ -97,39 +280,12 @@ bool TextStats::analyzeContent(const std::string& filepath, const std::string& c
 bool TextStats::analyzeFile(const std::wstring& filepath) {
     reset();
 
-    FILE* file = _wfopen(filepath.c_str(), L"rb");
-    if (!file) {
+    FileReadResult result = readFileContent(filepath, max_file_size_);
+    if (!result.success) {
         return false;
     }
 
-    fseek(file, 0, SEEK_END);
-    long fileSizeLong = ftell(file);
-    fseek(file, 0, SEEK_SET);
-
-    if (fileSizeLong < 0) {
-        fclose(file);
-        return false;
-    }
-
-    uint64_t fileSize = static_cast<uint64_t>(fileSizeLong);
-
-    if (fileSize > max_file_size_) {
-        fclose(file);
-        return false;
-    }
-
-    std::string content;
-    if (fileSize > 0) {
-        content.resize(static_cast<size_t>(fileSize), '\0');
-        if (fread(&content[0], 1, static_cast<size_t>(fileSize), file) != static_cast<size_t>(fileSize)) {
-            fclose(file);
-            return false;
-        }
-    }
-
-    fclose(file);
-
-    return analyzeContent(encoding_utils::wideToUtf8(filepath), content, fileSize);
+    return analyzeContent(encoding_utils::wideToUtf8(filepath), result.content, result.fileSize);
 }
 #endif
 
@@ -141,36 +297,12 @@ bool TextStats::analyzeFile(const std::string& filepath) {
 
 #ifdef _WIN32
     std::wstring widePath = encoding_utils::utf8ToWide(filepath);
-    FILE* file = _wfopen(widePath.c_str(), L"rb");
-    if (!file) {
+    FileReadResult result = readFileContent(widePath, max_file_size_);
+    if (!result.success) {
         return false;
     }
-
-    fseek(file, 0, SEEK_END);
-    long fileSizeLong = ftell(file);
-    fseek(file, 0, SEEK_SET);
-
-    if (fileSizeLong < 0) {
-        fclose(file);
-        return false;
-    }
-
-    fileSize = static_cast<uint64_t>(fileSizeLong);
-
-    if (fileSize > max_file_size_) {
-        fclose(file);
-        return false;
-    }
-
-    if (fileSize > 0) {
-        content.resize(static_cast<size_t>(fileSize), '\0');
-        if (fread(&content[0], 1, static_cast<size_t>(fileSize), file) != static_cast<size_t>(fileSize)) {
-            fclose(file);
-            return false;
-        }
-    }
-
-    fclose(file);
+    content = result.content;
+    fileSize = result.fileSize;
 #else
     std::ifstream file(filepath, std::ios::binary | std::ios::ate);
     if (!file) {
@@ -201,40 +333,92 @@ bool TextStats::analyzeFile(const std::string& filepath) {
     return analyzeContent(filepath, content, fileSize);
 }
 
+namespace {
+    bool hasBOM_UTF8(const std::string& content) {
+        if (content.size() < BOM_UTF8_LENGTH) {
+            return false;
+        }
+        return static_cast<unsigned char>(content[0]) == 0xEF &&
+               static_cast<unsigned char>(content[1]) == 0xBB &&
+               static_cast<unsigned char>(content[2]) == 0xBF;
+    }
+
+    bool hasBOM_UTF16LE(const std::string& content) {
+        if (content.size() < BOM_UTF16_LENGTH) {
+            return false;
+        }
+        if (content.size() >= BOM_UTF32_LENGTH &&
+            static_cast<unsigned char>(content[2]) == 0x00 &&
+            static_cast<unsigned char>(content[3]) == 0x00) {
+            return false;
+        }
+        return static_cast<unsigned char>(content[0]) == 0xFF &&
+               static_cast<unsigned char>(content[1]) == 0xFE;
+    }
+
+    bool hasBOM_UTF16BE(const std::string& content) {
+        if (content.size() < BOM_UTF16_LENGTH) {
+            return false;
+        }
+        return static_cast<unsigned char>(content[0]) == 0xFE &&
+               static_cast<unsigned char>(content[1]) == 0xFF;
+    }
+
+    bool hasBOM_UTF32LE(const std::string& content) {
+        if (content.size() < BOM_UTF32_LENGTH) {
+            return false;
+        }
+        return static_cast<unsigned char>(content[0]) == 0xFF &&
+               static_cast<unsigned char>(content[1]) == 0xFE &&
+               static_cast<unsigned char>(content[2]) == 0x00 &&
+               static_cast<unsigned char>(content[3]) == 0x00;
+    }
+
+    bool hasBOM_UTF32BE(const std::string& content) {
+        if (content.size() < BOM_UTF32_LENGTH) {
+            return false;
+        }
+        return static_cast<unsigned char>(content[0]) == 0x00 &&
+               static_cast<unsigned char>(content[1]) == 0x00 &&
+               static_cast<unsigned char>(content[2]) == 0xFE &&
+               static_cast<unsigned char>(content[3]) == 0xFF;
+    }
+
+    size_t getBOMLength(Encoding encoding) {
+        switch (encoding) {
+            case Encoding::UTF8:
+                return BOM_UTF8_LENGTH;
+            case Encoding::UTF16_LE:
+            case Encoding::UTF16_BE:
+                return BOM_UTF16_LENGTH;
+            case Encoding::UTF32_LE:
+            case Encoding::UTF32_BE:
+                return BOM_UTF32_LENGTH;
+            default:
+                return 0;
+        }
+    }
+}
+
 Encoding TextStats::detectEncoding(const std::string& content) const {
     if (content.size() < BOM_UTF16_LENGTH) {
         return Encoding::ASCII;
     }
 
-    if (content.size() >= BOM_UTF8_LENGTH &&
-        static_cast<unsigned char>(content[0]) == 0xEF &&
-        static_cast<unsigned char>(content[1]) == 0xBB &&
-        static_cast<unsigned char>(content[2]) == 0xBF) {
-        return Encoding::UTF8;
+    if (hasBOM_UTF32LE(content)) {
+        return Encoding::UTF32_LE;
     }
-
-    if (content.size() >= BOM_UTF16_LENGTH) {
-        if (static_cast<unsigned char>(content[0]) == 0xFF &&
-            static_cast<unsigned char>(content[1]) == 0xFE) {
-            if (content.size() >= BOM_UTF32_LENGTH && 
-                static_cast<unsigned char>(content[2]) == 0x00 && 
-                static_cast<unsigned char>(content[3]) == 0x00) {
-                return Encoding::UTF32_LE;
-            }
-            return Encoding::UTF16_LE;
-        }
-        if (static_cast<unsigned char>(content[0]) == 0xFE &&
-            static_cast<unsigned char>(content[1]) == 0xFF) {
-            return Encoding::UTF16_BE;
-        }
-    }
-
-    if (content.size() >= BOM_UTF32_LENGTH &&
-        static_cast<unsigned char>(content[0]) == 0x00 &&
-        static_cast<unsigned char>(content[1]) == 0x00 &&
-        static_cast<unsigned char>(content[2]) == 0xFE &&
-        static_cast<unsigned char>(content[3]) == 0xFF) {
+    if (hasBOM_UTF32BE(content)) {
         return Encoding::UTF32_BE;
+    }
+    if (hasBOM_UTF16LE(content)) {
+        return Encoding::UTF16_LE;
+    }
+    if (hasBOM_UTF16BE(content)) {
+        return Encoding::UTF16_BE;
+    }
+    if (hasBOM_UTF8(content)) {
+        return Encoding::UTF8;
     }
 
     if (isUTF8Valid(content)) {
@@ -284,179 +468,115 @@ bool TextStats::isUTF8Valid(const std::string& content) const {
     return true;
 }
 
+bool TextStats::isChineseCharOptimized(uint32_t codepoint) {
+    return (codepoint >= 0x4E00 && codepoint <= 0x9FFF) ||
+           (codepoint >= 0x3400 && codepoint <= 0x4DBF) ||
+           (codepoint >= 0x20000 && codepoint <= 0x2A6DF) ||
+           (codepoint >= 0x2A700 && codepoint <= 0x2B73F) ||
+           (codepoint >= 0x2B740 && codepoint <= 0x2B81F) ||
+           (codepoint >= 0x2B820 && codepoint <= 0x2CEAF) ||
+           (codepoint >= 0xF900 && codepoint <= 0xFAFF) ||
+           (codepoint >= 0x2F800 && codepoint <= 0x2FA1F);
+}
+
+bool TextStats::isHiraganaOptimized(uint32_t codepoint) {
+    return (codepoint >= 0x3041 && codepoint <= 0x309F);
+}
+
+bool TextStats::isKatakanaOptimized(uint32_t codepoint) {
+    return (codepoint >= 0x30A1 && codepoint <= 0x30FF) ||
+           (codepoint >= 0x31F0 && codepoint <= 0x31FF);
+}
+
+bool TextStats::isHangulOptimized(uint32_t codepoint) {
+    return (codepoint >= 0xAC00 && codepoint <= 0xD7A3) ||
+           (codepoint >= 0x1100 && codepoint <= 0x11FF) ||
+           (codepoint >= 0x3130 && codepoint <= 0x318F) ||
+           (codepoint >= 0xA960 && codepoint <= 0xA97F) ||
+           (codepoint >= 0xD7B0 && codepoint <= 0xD7FF);
+}
+
 bool TextStats::isUnicodeLetter(uint32_t codepoint) {
-    if (codepoint >= 'A' && codepoint <= 'Z') return true;
-    if (codepoint >= 'a' && codepoint <= 'z') return true;
-    
-    if (isCJKUnifiedIdeograph(codepoint)) return true;
-    if (isCJKCompatibilityIdeograph(codepoint)) return true;
-    if (isHiragana(codepoint)) return true;
-    if (isKatakana(codepoint)) return true;
-    if (isHangul(codepoint)) return true;
-    
-    if (codepoint >= 0xC0 && codepoint <= 0xD6) return true;
-    if (codepoint >= 0xD8 && codepoint <= 0xF6) return true;
-    if (codepoint >= 0xF8 && codepoint <= 0x2B8) return true;
-    
-    if (codepoint >= 0x1E00 && codepoint <= 0x1EFF) return true;
-    
-    if (codepoint >= 0x0370 && codepoint <= 0x03FF) return true;
-    if (codepoint >= 0x0400 && codepoint <= 0x04FF) return true;
-    if (codepoint >= 0x0500 && codepoint <= 0x052F) return true;
-    if (codepoint >= 0x0530 && codepoint <= 0x058F) return true;
-    if (codepoint >= 0x0590 && codepoint <= 0x05FF) return true;
-    if (codepoint >= 0x0600 && codepoint <= 0x06FF) return true;
-    if (codepoint >= 0x0700 && codepoint <= 0x074F) return true;
-    if (codepoint >= 0x0750 && codepoint <= 0x077F) return true;
-    if (codepoint >= 0x0780 && codepoint <= 0x07BF) return true;
-    if (codepoint >= 0x07C0 && codepoint <= 0x07FF) return true;
-    if (codepoint >= 0x0900 && codepoint <= 0x097F) return true;
-    if (codepoint >= 0x0980 && codepoint <= 0x09FF) return true;
-    if (codepoint >= 0x0A00 && codepoint <= 0x0A7F) return true;
-    if (codepoint >= 0x0A80 && codepoint <= 0x0AFF) return true;
-    if (codepoint >= 0x0B00 && codepoint <= 0x0B7F) return true;
-    if (codepoint >= 0x0B80 && codepoint <= 0x0BFF) return true;
-    if (codepoint >= 0x0C00 && codepoint <= 0x0C7F) return true;
-    if (codepoint >= 0x0C80 && codepoint <= 0x0CFF) return true;
-    if (codepoint >= 0x0D00 && codepoint <= 0x0D7F) return true;
-    if (codepoint >= 0x0D80 && codepoint <= 0x0DFF) return true;
-    if (codepoint >= 0x0E00 && codepoint <= 0x0E7F) return true;
-    if (codepoint >= 0x0E80 && codepoint <= 0x0EFF) return true;
-    if (codepoint >= 0x0F00 && codepoint <= 0x0FFF) return true;
-    
-    if (codepoint >= 0x10000 && codepoint <= 0x1FFFD) return true;
-    if (codepoint >= 0x20000 && codepoint <= 0x2FFFD) return true;
-    if (codepoint >= 0x30000 && codepoint <= 0x3FFFD) return true;
-    
-    return false;
+    if (codepoint <= 0x007F) {
+        return (codepoint >= 'A' && codepoint <= 'Z') ||
+               (codepoint >= 'a' && codepoint <= 'z');
+    }
+
+    if (codepoint >= 0x4E00 && codepoint <= 0x9FFF) {
+        return true;
+    }
+
+    if (codepoint >= 0x3040 && codepoint <= 0x30FF) {
+        return true;
+    }
+
+    if (codepoint >= 0xAC00 && codepoint <= 0xD7A3) {
+        return true;
+    }
+
+    return binarySearchRange(codepoint, UNICODE_LETTER_RANGES, UNICODE_LETTER_RANGE_COUNT);
 }
 
 bool TextStats::isUnicodeDigit(uint32_t codepoint) {
-    if (codepoint >= '0' && codepoint <= '9') return true;
-    
-    if (codepoint >= 0x0660 && codepoint <= 0x0669) return true;
-    if (codepoint >= 0x06F0 && codepoint <= 0x06F9) return true;
-    if (codepoint >= 0x07C0 && codepoint <= 0x07C9) return true;
-    if (codepoint >= 0x0966 && codepoint <= 0x096F) return true;
-    if (codepoint >= 0x09E6 && codepoint <= 0x09EF) return true;
-    if (codepoint >= 0x0A66 && codepoint <= 0x0A6F) return true;
-    if (codepoint >= 0x0AE6 && codepoint <= 0x0AEF) return true;
-    if (codepoint >= 0x0B66 && codepoint <= 0x0B6F) return true;
-    if (codepoint >= 0x0BE6 && codepoint <= 0x0BEF) return true;
-    if (codepoint >= 0x0C66 && codepoint <= 0x0C6F) return true;
-    if (codepoint >= 0x0CE6 && codepoint <= 0x0CEF) return true;
-    if (codepoint >= 0x0D66 && codepoint <= 0x0D6F) return true;
-    if (codepoint >= 0x0E50 && codepoint <= 0x0E59) return true;
-    if (codepoint >= 0x0ED0 && codepoint <= 0x0ED9) return true;
-    if (codepoint >= 0x0F20 && codepoint <= 0x0F29) return true;
-    if (codepoint >= 0x1040 && codepoint <= 0x1049) return true;
-    if (codepoint >= 0x1090 && codepoint <= 0x1099) return true;
-    if (codepoint >= 0x17E0 && codepoint <= 0x17E9) return true;
-    if (codepoint >= 0x1810 && codepoint <= 0x1819) return true;
-    if (codepoint >= 0x1946 && codepoint <= 0x194F) return true;
-    if (codepoint >= 0x19D0 && codepoint <= 0x19D9) return true;
-    if (codepoint >= 0x1A80 && codepoint <= 0x1A89) return true;
-    if (codepoint >= 0x1A90 && codepoint <= 0x1A99) return true;
-    if (codepoint >= 0x1B50 && codepoint <= 0x1B59) return true;
-    if (codepoint >= 0x1BB0 && codepoint <= 0x1BB9) return true;
-    if (codepoint >= 0x1C40 && codepoint <= 0x1C49) return true;
-    if (codepoint >= 0x1C50 && codepoint <= 0x1C59) return true;
-    if (codepoint >= 0xA620 && codepoint <= 0xA629) return true;
-    if (codepoint >= 0xA8D0 && codepoint <= 0xA8D9) return true;
-    if (codepoint >= 0xA900 && codepoint <= 0xA909) return true;
-    if (codepoint >= 0xA9D0 && codepoint <= 0xA9D9) return true;
-    if (codepoint >= 0xAA50 && codepoint <= 0xAA59) return true;
-    if (codepoint >= 0xABF0 && codepoint <= 0xABF9) return true;
-    if (codepoint >= 0xFF10 && codepoint <= 0xFF19) return true;
-    
-    return false;
+    if (codepoint >= '0' && codepoint <= '9') {
+        return true;
+    }
+
+    if (codepoint >= 0xFF10 && codepoint <= 0xFF19) {
+        return true;
+    }
+
+    return binarySearchRange(codepoint, UNICODE_DIGIT_RANGES, UNICODE_DIGIT_RANGE_COUNT);
 }
 
 bool TextStats::isUnicodeWhitespace(uint32_t codepoint) {
-    if (codepoint == ' ') return true;
-    if (codepoint == '\t') return true;
-    if (codepoint == '\n') return true;
-    if (codepoint == '\r') return true;
-    if (codepoint == '\f') return true;
-    if (codepoint == '\v') return true;
-    
-    if (codepoint == 0x00A0) return true;
-    if (codepoint == 0x1680) return true;
-    if (codepoint == 0x2000) return true;
-    if (codepoint == 0x2001) return true;
-    if (codepoint == 0x2002) return true;
-    if (codepoint == 0x2003) return true;
-    if (codepoint == 0x2004) return true;
-    if (codepoint == 0x2005) return true;
-    if (codepoint == 0x2006) return true;
-    if (codepoint == 0x2007) return true;
-    if (codepoint == 0x2008) return true;
-    if (codepoint == 0x2009) return true;
-    if (codepoint == 0x200A) return true;
-    if (codepoint == 0x202F) return true;
-    if (codepoint == 0x205F) return true;
-    if (codepoint == 0x3000) return true;
-    
-    if (codepoint == 0x2028) return true;
-    if (codepoint == 0x2029) return true;
-    
-    return false;
+    if (codepoint <= 0x0020) {
+        return codepoint == ' ' ||
+               codepoint == '\t' ||
+               codepoint == '\n' ||
+               codepoint == '\r' ||
+               codepoint == '\f' ||
+               codepoint == '\v';
+    }
+
+    return binarySearchRange(codepoint, UNICODE_WHITESPACE_RANGES, UNICODE_WHITESPACE_RANGE_COUNT);
 }
 
 bool TextStats::isUnicodePunctuation(uint32_t codepoint) {
-    if (codepoint >= 0x21 && codepoint <= 0x2F) return true;
-    if (codepoint >= 0x3A && codepoint <= 0x40) return true;
-    if (codepoint >= 0x5B && codepoint <= 0x60) return true;
-    if (codepoint >= 0x7B && codepoint <= 0x7E) return true;
-    
-    if (codepoint >= 0x2010 && codepoint <= 0x2027) return true;
-    if (codepoint >= 0x2030 && codepoint <= 0x204E) return true;
-    
-    if (codepoint >= 0x3001 && codepoint <= 0x3003) return true;
-    if (codepoint >= 0x3008 && codepoint <= 0x3011) return true;
-    if (codepoint >= 0x3014 && codepoint <= 0x301F) return true;
-    
-    if (codepoint >= 0xFF01 && codepoint <= 0xFF0F) return true;
-    if (codepoint >= 0xFF1A && codepoint <= 0xFF20) return true;
-    if (codepoint >= 0xFF3B && codepoint <= 0xFF40) return true;
-    if (codepoint >= 0xFF5B && codepoint <= 0xFF65) return true;
-    
-    if (codepoint == 0x00A1) return true;
-    if (codepoint == 0x00BF) return true;
-    if (codepoint == 0x00AB) return true;
-    if (codepoint == 0x00BB) return true;
-    if (codepoint == 0x2018) return true;
-    if (codepoint == 0x2019) return true;
-    if (codepoint == 0x201C) return true;
-    if (codepoint == 0x201D) return true;
-    
-    return false;
+    if (codepoint <= 0x007E) {
+        return (codepoint >= 0x21 && codepoint <= 0x2F) ||
+               (codepoint >= 0x3A && codepoint <= 0x40) ||
+               (codepoint >= 0x5B && codepoint <= 0x60) ||
+               (codepoint >= 0x7B && codepoint <= 0x7E);
+    }
+
+    return binarySearchRange(codepoint, UNICODE_PUNCTUATION_RANGES, UNICODE_PUNCTUATION_RANGE_COUNT);
 }
 
 uint32_t TextStats::unicodeToLower(uint32_t codepoint) {
     if (codepoint >= 'A' && codepoint <= 'Z') {
         return codepoint - 'A' + 'a';
     }
-    
+
     if (codepoint >= 0xC0 && codepoint <= 0xD6) {
         return codepoint + 0x20;
     }
     if (codepoint >= 0xD8 && codepoint <= 0xDE) {
         return codepoint + 0x20;
     }
-    
+
     if (codepoint == 0x0178) return 0x00FF;
     if (codepoint == 0x01F8) return 0x01F9;
     if (codepoint == 0x01FA) return 0x01FB;
     if (codepoint == 0x01FC) return 0x01FD;
     if (codepoint == 0x01FE) return 0x01FF;
-    
+
     return codepoint;
 }
 
 std::string TextStats::codepointToUTF8(uint32_t codepoint) {
     std::string result;
-    
+
     if (codepoint <= 0x7F) {
         result += static_cast<char>(codepoint);
     } else if (codepoint <= 0x7FF) {
@@ -472,19 +592,19 @@ std::string TextStats::codepointToUTF8(uint32_t codepoint) {
         result += static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F));
         result += static_cast<char>(0x80 | (codepoint & 0x3F));
     }
-    
+
     return result;
 }
 
 UnicodeChar TextStats::decodeUTF8(const std::string& content, size_t offset) const {
     UnicodeChar result = {0, 1, false};
-    
+
     if (offset >= content.size()) {
         return result;
     }
-    
+
     unsigned char c = static_cast<unsigned char>(content[offset]);
-    
+
     if (c <= 0x7F) {
         result.codepoint = c;
         result.byte_length = 1;
@@ -548,13 +668,13 @@ UnicodeChar TextStats::decodeUTF8(const std::string& content, size_t offset) con
         result.byte_length = 1;
         result.valid = false;
     }
-    
+
     return result;
 }
 
 UnicodeChar TextStats::decodeUTF16LE(const std::string& content, size_t offset) const {
     UnicodeChar result = {0, 2, false};
-    
+
     if (offset + 1 >= content.size()) {
         if (offset < content.size()) {
             result.codepoint = static_cast<unsigned char>(content[offset]);
@@ -562,10 +682,10 @@ UnicodeChar TextStats::decodeUTF16LE(const std::string& content, size_t offset) 
         }
         return result;
     }
-    
+
     uint16_t w1 = static_cast<unsigned char>(content[offset]) | 
                   (static_cast<unsigned char>(content[offset + 1]) << 8);
-    
+
     if (w1 >= 0xD800 && w1 <= 0xDBFF) {
         if (offset + 3 >= content.size()) {
             result.codepoint = w1;
@@ -593,13 +713,13 @@ UnicodeChar TextStats::decodeUTF16LE(const std::string& content, size_t offset) 
         result.byte_length = 2;
         result.valid = true;
     }
-    
+
     return result;
 }
 
 UnicodeChar TextStats::decodeUTF16BE(const std::string& content, size_t offset) const {
     UnicodeChar result = {0, 2, false};
-    
+
     if (offset + 1 >= content.size()) {
         if (offset < content.size()) {
             result.codepoint = static_cast<unsigned char>(content[offset]);
@@ -607,10 +727,10 @@ UnicodeChar TextStats::decodeUTF16BE(const std::string& content, size_t offset) 
         }
         return result;
     }
-    
+
     uint16_t w1 = (static_cast<unsigned char>(content[offset]) << 8) | 
                   static_cast<unsigned char>(content[offset + 1]);
-    
+
     if (w1 >= 0xD800 && w1 <= 0xDBFF) {
         if (offset + 3 >= content.size()) {
             result.codepoint = w1;
@@ -638,13 +758,13 @@ UnicodeChar TextStats::decodeUTF16BE(const std::string& content, size_t offset) 
         result.byte_length = 2;
         result.valid = true;
     }
-    
+
     return result;
 }
 
 UnicodeChar TextStats::decodeUTF32LE(const std::string& content, size_t offset) const {
     UnicodeChar result = {0, 4, false};
-    
+
     if (offset + 3 >= content.size()) {
         if (offset < content.size()) {
             result.codepoint = static_cast<unsigned char>(content[offset]);
@@ -652,21 +772,21 @@ UnicodeChar TextStats::decodeUTF32LE(const std::string& content, size_t offset) 
         }
         return result;
     }
-    
+
     result.codepoint = static_cast<unsigned char>(content[offset]) |
                        (static_cast<unsigned char>(content[offset + 1]) << 8) |
                        (static_cast<unsigned char>(content[offset + 2]) << 16) |
                        (static_cast<unsigned char>(content[offset + 3]) << 24);
-    
+
     result.byte_length = 4;
     result.valid = (result.codepoint <= 0x10FFFF);
-    
+
     return result;
 }
 
 UnicodeChar TextStats::decodeUTF32BE(const std::string& content, size_t offset) const {
     UnicodeChar result = {0, 4, false};
-    
+
     if (offset + 3 >= content.size()) {
         if (offset < content.size()) {
             result.codepoint = static_cast<unsigned char>(content[offset]);
@@ -674,15 +794,15 @@ UnicodeChar TextStats::decodeUTF32BE(const std::string& content, size_t offset) 
         }
         return result;
     }
-    
+
     result.codepoint = (static_cast<unsigned char>(content[offset]) << 24) |
                        (static_cast<unsigned char>(content[offset + 1]) << 16) |
                        (static_cast<unsigned char>(content[offset + 2]) << 8) |
                        static_cast<unsigned char>(content[offset + 3]);
-    
+
     result.byte_length = 4;
     result.valid = (result.codepoint <= 0x10FFFF);
-    
+
     return result;
 }
 
@@ -771,7 +891,7 @@ void TextStats::countStatsFromCodepoint(uint32_t codepoint,
         if (!inLine) inLine = true;
         currentLineLength++;
 
-        if (isChineseChar(codepoint)) {
+        if (isChineseCharOptimized(codepoint)) {
             stats_.category_stats.chinese++;
             if (!currentWord.empty()) {
                 wordCount[currentWord]++;
@@ -873,22 +993,19 @@ void TextStats::processAllEncodings(const std::string& content) {
     uint32_t lastCodepoint = 0;
     Encoding encoding = stats_.file_info.encoding;
 
-    if (encoding == Encoding::UTF8 && content.size() >= BOM_UTF8_LENGTH &&
-        static_cast<unsigned char>(content[0]) == 0xEF &&
-        static_cast<unsigned char>(content[1]) == 0xBB &&
-        static_cast<unsigned char>(content[2]) == 0xBF) {
+    if (encoding == Encoding::UTF8 && hasBOM_UTF8(content)) {
         offset = BOM_UTF8_LENGTH;
-    } else if ((encoding == Encoding::UTF16_LE || encoding == Encoding::UTF16_BE) &&
-               content.size() >= BOM_UTF16_LENGTH) {
+    } else if ((encoding == Encoding::UTF16_LE && hasBOM_UTF16LE(content)) ||
+               (encoding == Encoding::UTF16_BE && hasBOM_UTF16BE(content))) {
         offset = BOM_UTF16_LENGTH;
-    } else if ((encoding == Encoding::UTF32_LE || encoding == Encoding::UTF32_BE) &&
-               content.size() >= BOM_UTF32_LENGTH) {
+    } else if ((encoding == Encoding::UTF32_LE && hasBOM_UTF32LE(content)) ||
+               (encoding == Encoding::UTF32_BE && hasBOM_UTF32BE(content))) {
         offset = BOM_UTF32_LENGTH;
     }
 
     while (offset < content.size()) {
         UnicodeChar uc = decodeChar(content, offset, encoding);
-        
+
         if (!uc.valid && uc.byte_length == 0) {
             break;
         }
