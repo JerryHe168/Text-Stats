@@ -134,8 +134,7 @@ private:
                            bool inLine,
                            uint64_t currentLineLength,
                            uint64_t totalLineLength,
-                           uint64_t lineCount,
-                           uint64_t charCount);
+                           uint64_t lineCount);
 
     bool analyzeContent(const std::string& filepath, const std::string& content, uint64_t fileSize);
 };
