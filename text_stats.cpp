@@ -6,15 +6,48 @@
 #include <cstring>
 #include <algorithm>
 #include <limits>
-#include <queue>
+#include <stdexcept>
 
 #ifdef _WIN32
 #include <windows.h>
 #include <stdio.h>
 #endif
 
-TextStats::TextStats() {
+using namespace TextStatsConstants;
+
+namespace {
+    uint64_t calculateTotalWords(const std::unordered_map<std::string, uint64_t>& wordCount) {
+        uint64_t total = 0;
+        for (const auto& pair : wordCount) {
+            total += pair.second;
+        }
+        return total;
+    }
+
+    bool isPunctuationCodepoint(uint32_t codepoint) {
+        return (codepoint >= 0x21 && codepoint <= 0x2F) ||
+               (codepoint >= 0x3A && codepoint <= 0x40) ||
+               (codepoint >= 0x5B && codepoint <= 0x60) ||
+               (codepoint >= 0x7B && codepoint <= 0x7E);
+    }
+
+    bool isWhitespaceCodepoint(uint32_t codepoint) {
+        return codepoint == ' ' || codepoint == '\t' || codepoint == '\n' ||
+               codepoint == '\r' || codepoint == '\f' || codepoint == '\v';
+    }
+}
+
+TextStats::TextStats() 
+    : max_file_size_(DEFAULT_MAX_FILE_SIZE) {
     reset();
+}
+
+uint64_t TextStats::getMaxFileSize() const {
+    return max_file_size_;
+}
+
+void TextStats::setMaxFileSize(uint64_t maxSize) {
+    max_file_size_ = maxSize;
 }
 
 void TextStats::reset() {
@@ -24,10 +57,19 @@ void TextStats::reset() {
     stats_.word_stats.top_words.clear();
 }
 
+bool TextStats::analyzeContent(const std::string& filepath, const std::string& content, uint64_t fileSize) {
+    stats_.file_info.file_path = filepath;
+    stats_.file_info.file_size = fileSize;
+    stats_.file_info.encoding = detectEncoding(content);
+
+    countAllStats(content);
+
+    return true;
+}
+
 #ifdef _WIN32
 bool TextStats::analyzeFile(const std::wstring& filepath) {
     reset();
-    stats_.file_info.file_path = encoding_utils::wideToUtf8(filepath);
 
     FILE* file = _wfopen(filepath.c_str(), L"rb");
     if (!file) {
@@ -35,44 +77,41 @@ bool TextStats::analyzeFile(const std::wstring& filepath) {
     }
 
     fseek(file, 0, SEEK_END);
-    long fileSize = ftell(file);
+    long fileSizeLong = ftell(file);
     fseek(file, 0, SEEK_SET);
 
-    if (fileSize < 0) {
+    if (fileSizeLong < 0) {
         fclose(file);
         return false;
     }
 
-    stats_.file_info.file_size = static_cast<uint64_t>(fileSize);
+    uint64_t fileSize = static_cast<uint64_t>(fileSizeLong);
 
-    std::string content(static_cast<size_t>(fileSize), '\0');
-    if (fileSize > 0 && fread(&content[0], 1, static_cast<size_t>(fileSize), file) != static_cast<size_t>(fileSize)) {
+    if (fileSize > max_file_size_) {
         fclose(file);
         return false;
+    }
+
+    std::string content;
+    if (fileSize > 0) {
+        content.resize(static_cast<size_t>(fileSize), '\0');
+        if (fread(&content[0], 1, static_cast<size_t>(fileSize), file) != static_cast<size_t>(fileSize)) {
+            fclose(file);
+            return false;
+        }
     }
 
     fclose(file);
 
-    stats_.file_info.encoding = detectEncoding(content);
-
-    if (stats_.file_info.encoding == Encoding::UTF8) {
-        countUTF8Stats(content);
-    } else if (stats_.file_info.encoding == Encoding::ASCII ||
-               stats_.file_info.encoding == Encoding::UNKNOWN) {
-        countBasicStats(content);
-        countCategoryStats(content);
-    }
-
-    countLineStats(content);
-    countWordStats(content);
-
-    return true;
+    return analyzeContent(encoding_utils::wideToUtf8(filepath), content, fileSize);
 }
 #endif
 
 bool TextStats::analyzeFile(const std::string& filepath) {
     reset();
-    stats_.file_info.file_path = filepath;
+
+    std::string content;
+    uint64_t fileSize = 0;
 
 #ifdef _WIN32
     std::wstring widePath = encoding_utils::utf8ToWide(filepath);
@@ -82,20 +121,27 @@ bool TextStats::analyzeFile(const std::string& filepath) {
     }
 
     fseek(file, 0, SEEK_END);
-    long fileSize = ftell(file);
+    long fileSizeLong = ftell(file);
     fseek(file, 0, SEEK_SET);
 
-    if (fileSize < 0) {
+    if (fileSizeLong < 0) {
         fclose(file);
         return false;
     }
 
-    stats_.file_info.file_size = static_cast<uint64_t>(fileSize);
+    fileSize = static_cast<uint64_t>(fileSizeLong);
 
-    std::string content(static_cast<size_t>(fileSize), '\0');
-    if (fileSize > 0 && fread(&content[0], 1, static_cast<size_t>(fileSize), file) != static_cast<size_t>(fileSize)) {
+    if (fileSize > max_file_size_) {
         fclose(file);
         return false;
+    }
+
+    if (fileSize > 0) {
+        content.resize(static_cast<size_t>(fileSize), '\0');
+        if (fread(&content[0], 1, static_cast<size_t>(fileSize), file) != static_cast<size_t>(fileSize)) {
+            fclose(file);
+            return false;
+        }
     }
 
     fclose(file);
@@ -105,49 +151,46 @@ bool TextStats::analyzeFile(const std::string& filepath) {
         return false;
     }
 
-    std::streampos fileSize = file.tellg();
-    stats_.file_info.file_size = static_cast<uint64_t>(fileSize);
+    std::streampos fileSizePos = file.tellg();
+    if (fileSizePos < 0) {
+        return false;
+    }
+
+    fileSize = static_cast<uint64_t>(fileSizePos);
+
+    if (fileSize > max_file_size_) {
+        return false;
+    }
 
     file.seekg(0, std::ios::beg);
 
-    std::string content(static_cast<size_t>(fileSize), '\0');
-    if (!file.read(&content[0], fileSize)) {
-        return false;
+    if (fileSize > 0) {
+        content.resize(static_cast<size_t>(fileSize), '\0');
+        if (!file.read(&content[0], fileSizePos)) {
+            return false;
+        }
     }
 #endif
 
-    stats_.file_info.encoding = detectEncoding(content);
-
-    if (stats_.file_info.encoding == Encoding::UTF8) {
-        countUTF8Stats(content);
-    } else if (stats_.file_info.encoding == Encoding::ASCII ||
-               stats_.file_info.encoding == Encoding::UNKNOWN) {
-        countBasicStats(content);
-        countCategoryStats(content);
-    }
-
-    countLineStats(content);
-    countWordStats(content);
-
-    return true;
+    return analyzeContent(filepath, content, fileSize);
 }
 
-Encoding TextStats::detectEncoding(const std::string& content) {
-    if (content.size() < 2) {
+Encoding TextStats::detectEncoding(const std::string& content) const {
+    if (content.size() < BOM_UTF16_LENGTH) {
         return Encoding::ASCII;
     }
 
-    if (content.size() >= 3 &&
+    if (content.size() >= BOM_UTF8_LENGTH &&
         static_cast<unsigned char>(content[0]) == 0xEF &&
         static_cast<unsigned char>(content[1]) == 0xBB &&
         static_cast<unsigned char>(content[2]) == 0xBF) {
         return Encoding::UTF8;
     }
 
-    if (content.size() >= 2) {
+    if (content.size() >= BOM_UTF16_LENGTH) {
         if (static_cast<unsigned char>(content[0]) == 0xFF &&
             static_cast<unsigned char>(content[1]) == 0xFE) {
-            if (content.size() >= 4 && content[2] == 0x00 && content[3] == 0x00) {
+            if (content.size() >= BOM_UTF32_LENGTH && content[2] == 0x00 && content[3] == 0x00) {
                 return Encoding::UTF32_LE;
             }
             return Encoding::UTF16_LE;
@@ -158,7 +201,7 @@ Encoding TextStats::detectEncoding(const std::string& content) {
         }
     }
 
-    if (content.size() >= 4 &&
+    if (content.size() >= BOM_UTF32_LENGTH &&
         static_cast<unsigned char>(content[0]) == 0x00 &&
         static_cast<unsigned char>(content[1]) == 0x00 &&
         static_cast<unsigned char>(content[2]) == 0xFE &&
@@ -184,7 +227,7 @@ Encoding TextStats::detectEncoding(const std::string& content) {
     return Encoding::UNKNOWN;
 }
 
-bool TextStats::isUTF8Valid(const std::string& content) {
+bool TextStats::isUTF8Valid(const std::string& content) const {
     size_t i = 0;
     while (i < content.size()) {
         unsigned char c = static_cast<unsigned char>(content[i]);
@@ -213,7 +256,7 @@ bool TextStats::isUTF8Valid(const std::string& content) {
     return true;
 }
 
-bool TextStats::isChineseChar(uint32_t codepoint) {
+bool TextStats::isChineseChar(uint32_t codepoint) const {
     return (codepoint >= 0x4E00 && codepoint <= 0x9FFF) ||
            (codepoint >= 0x3400 && codepoint <= 0x4DBF) ||
            (codepoint >= 0x20000 && codepoint <= 0x2A6DF) ||
@@ -222,68 +265,46 @@ bool TextStats::isChineseChar(uint32_t codepoint) {
            (codepoint >= 0x2B820 && codepoint <= 0x2CEAF);
 }
 
-void TextStats::countBasicStats(const std::string& content) {
-    stats_.basic_stats.total_chars = content.size();
+bool TextStats::isWordChar(uint32_t codepoint) const {
+    return (codepoint >= 'A' && codepoint <= 'Z') ||
+           (codepoint >= 'a' && codepoint <= 'z') ||
+           (codepoint >= '0' && codepoint <= '9') ||
+           codepoint == '_' ||
+           codepoint == '\'';
+}
 
-    for (char c : content) {
-        if (!std::isspace(static_cast<unsigned char>(c))) {
-            stats_.basic_stats.chars_without_whitespace++;
-        }
-        if (c != ' ') {
-            stats_.basic_stats.chars_without_spaces++;
-        }
+char TextStats::toLowerChar(uint32_t codepoint) const {
+    if (codepoint >= 'A' && codepoint <= 'Z') {
+        return static_cast<char>(codepoint - 'A' + 'a');
     }
+    return static_cast<char>(codepoint);
+}
 
-    bool inLine = false;
-    for (char c : content) {
-        if (c == '\n') {
-            stats_.basic_stats.total_lines++;
-            if (inLine) {
-                stats_.basic_stats.non_empty_lines++;
-                inLine = false;
-            }
-        } else if (!inLine && !std::isspace(static_cast<unsigned char>(c))) {
-            inLine = true;
-        }
-    }
-
-    if (!content.empty() && content.back() != '\n') {
-        stats_.basic_stats.total_lines++;
-        if (inLine) {
-            stats_.basic_stats.non_empty_lines++;
-        }
-    }
-
+void TextStats::countAllStats(const std::string& content) {
     if (content.empty()) {
-        stats_.basic_stats.total_lines = 0;
-        stats_.basic_stats.non_empty_lines = 0;
+        stats_.line_stats.total_lines = 0;
+        stats_.line_stats.non_empty_lines = 0;
+        stats_.line_stats.longest_line_length = 0;
+        stats_.line_stats.shortest_line_length = 0;
+        stats_.line_stats.average_line_length = 0.0;
+        stats_.word_stats.total_words = 0;
+        stats_.word_stats.unique_words = 0;
+        return;
     }
-}
 
-void TextStats::countCategoryStats(const std::string& content) {
-    for (char ch : content) {
-        unsigned char c = static_cast<unsigned char>(ch);
-        if (c == ' ') {
-            stats_.category_stats.spaces++;
-        } else if (c == '\t') {
-            stats_.category_stats.tabs++;
-        } else if (c == '\n') {
-            stats_.category_stats.newlines++;
-        } else if (std::isalpha(c)) {
-            stats_.category_stats.letters++;
-        } else if (std::isdigit(c)) {
-            stats_.category_stats.digits++;
-        } else if (std::ispunct(c)) {
-            stats_.category_stats.punctuations++;
-        }
-    }
-}
+    std::unordered_map<std::string, uint64_t> wordCount;
+    std::string currentWord;
 
-void TextStats::countUTF8Stats(const std::string& content) {
-    size_t charCount = 0;
-    size_t charCountWithoutSpaces = 0;
-    size_t charCountWithoutWhitespace = 0;
+    uint64_t charCount = 0;
+    uint64_t charCountWithoutSpaces = 0;
+    uint64_t charCountWithoutWhitespace = 0;
+
     bool inLine = false;
+    uint64_t currentLineLength = 0;
+    uint64_t totalLineLength = 0;
+    uint64_t lineCount = 0;
+
+    bool isUTF8 = (stats_.file_info.encoding == Encoding::UTF8);
 
     size_t i = 0;
     while (i < content.size()) {
@@ -291,26 +312,40 @@ void TextStats::countUTF8Stats(const std::string& content) {
         size_t charLen = 1;
         uint32_t codepoint = 0;
 
-        if (c <= 0x7F) {
-            codepoint = c;
-            charLen = 1;
-        } else if ((c & 0xE0) == 0xC0) {
-            if (i + 1 >= content.size()) break;
-            codepoint = ((c & 0x1F) << 6) | (static_cast<unsigned char>(content[i+1]) & 0x3F);
-            charLen = 2;
-        } else if ((c & 0xF0) == 0xE0) {
-            if (i + 2 >= content.size()) break;
-            codepoint = ((c & 0x0F) << 12) |
-                        ((static_cast<unsigned char>(content[i+1]) & 0x3F) << 6) |
-                        (static_cast<unsigned char>(content[i+2]) & 0x3F);
-            charLen = 3;
-        } else if ((c & 0xF8) == 0xF0) {
-            if (i + 3 >= content.size()) break;
-            codepoint = ((c & 0x07) << 18) |
-                        ((static_cast<unsigned char>(content[i+1]) & 0x3F) << 12) |
-                        ((static_cast<unsigned char>(content[i+2]) & 0x3F) << 6) |
-                        (static_cast<unsigned char>(content[i+3]) & 0x3F);
-            charLen = 4;
+        if (isUTF8 && c > 0x7F) {
+            if ((c & 0xE0) == 0xC0) {
+                if (i + 1 >= content.size()) {
+                    codepoint = c;
+                    charLen = 1;
+                } else {
+                    codepoint = ((c & 0x1F) << 6) | (static_cast<unsigned char>(content[i+1]) & 0x3F);
+                    charLen = 2;
+                }
+            } else if ((c & 0xF0) == 0xE0) {
+                if (i + 2 >= content.size()) {
+                    codepoint = c;
+                    charLen = 1;
+                } else {
+                    codepoint = ((c & 0x0F) << 12) |
+                                ((static_cast<unsigned char>(content[i+1]) & 0x3F) << 6) |
+                                (static_cast<unsigned char>(content[i+2]) & 0x3F);
+                    charLen = 3;
+                }
+            } else if ((c & 0xF8) == 0xF0) {
+                if (i + 3 >= content.size()) {
+                    codepoint = c;
+                    charLen = 1;
+                } else {
+                    codepoint = ((c & 0x07) << 18) |
+                                ((static_cast<unsigned char>(content[i+1]) & 0x3F) << 12) |
+                                ((static_cast<unsigned char>(content[i+2]) & 0x3F) << 6) |
+                                (static_cast<unsigned char>(content[i+3]) & 0x3F);
+                    charLen = 4;
+                }
+            } else {
+                codepoint = c;
+                charLen = 1;
+            }
         } else {
             codepoint = c;
             charLen = 1;
@@ -318,8 +353,7 @@ void TextStats::countUTF8Stats(const std::string& content) {
 
         charCount++;
 
-        bool isWhitespace = (codepoint == ' ' || codepoint == '\t' || codepoint == '\n' ||
-                             codepoint == '\r' || codepoint == '\f' || codepoint == '\v');
+        bool isWhitespace = isWhitespaceCodepoint(codepoint);
         bool isSpace = (codepoint == ' ');
 
         if (!isWhitespace) {
@@ -331,8 +365,16 @@ void TextStats::countUTF8Stats(const std::string& content) {
 
         if (codepoint == ' ') {
             stats_.category_stats.spaces++;
+            if (!currentWord.empty()) {
+                wordCount[currentWord]++;
+                currentWord.clear();
+            }
         } else if (codepoint == '\t') {
             stats_.category_stats.tabs++;
+            if (!currentWord.empty()) {
+                wordCount[currentWord]++;
+                currentWord.clear();
+            }
         } else if (codepoint == '\n') {
             stats_.category_stats.newlines++;
             stats_.basic_stats.total_lines++;
@@ -340,84 +382,7 @@ void TextStats::countUTF8Stats(const std::string& content) {
                 stats_.basic_stats.non_empty_lines++;
                 inLine = false;
             }
-        } else if ((codepoint >= 'A' && codepoint <= 'Z') ||
-                   (codepoint >= 'a' && codepoint <= 'z')) {
-            stats_.category_stats.letters++;
-            if (!inLine) inLine = true;
-        } else if (codepoint >= '0' && codepoint <= '9') {
-            stats_.category_stats.digits++;
-            if (!inLine) inLine = true;
-        } else if (isChineseChar(codepoint)) {
-            stats_.category_stats.chinese++;
-            if (!inLine) inLine = true;
-        } else {
-            if ((codepoint >= 0x21 && codepoint <= 0x2F) ||
-                (codepoint >= 0x3A && codepoint <= 0x40) ||
-                (codepoint >= 0x5B && codepoint <= 0x60) ||
-                (codepoint >= 0x7B && codepoint <= 0x7E)) {
-                stats_.category_stats.punctuations++;
-            }
-            if (!inLine && !isWhitespace) inLine = true;
-        }
 
-        i += charLen;
-    }
-
-    stats_.basic_stats.total_chars = charCount;
-    stats_.basic_stats.chars_without_spaces = charCountWithoutSpaces;
-    stats_.basic_stats.chars_without_whitespace = charCountWithoutWhitespace;
-
-    if (!content.empty()) {
-        if (i > 0) {
-            size_t lastPos = i - 1;
-            while (lastPos > 0 && (static_cast<unsigned char>(content[lastPos]) & 0xC0) == 0x80) {
-                lastPos--;
-            }
-            unsigned char lastChar = static_cast<unsigned char>(content[lastPos]);
-            uint32_t lastCodepoint = lastChar;
-            if (lastPos + 1 < content.size() && (lastChar & 0xE0) == 0xC0) {
-                lastCodepoint = ((lastChar & 0x1F) << 6) | (static_cast<unsigned char>(content[lastPos+1]) & 0x3F);
-            }
-            if (lastCodepoint != '\n') {
-                stats_.basic_stats.total_lines++;
-                if (inLine) {
-                    stats_.basic_stats.non_empty_lines++;
-                }
-            }
-        }
-    }
-
-    if (content.empty()) {
-        stats_.basic_stats.total_lines = 0;
-        stats_.basic_stats.non_empty_lines = 0;
-    }
-}
-
-const TextStatistics& TextStats::getStatistics() const {
-    return stats_;
-}
-
-void TextStats::countLineStats(const std::string& content) {
-    if (content.empty()) {
-        stats_.line_stats.total_lines = 0;
-        stats_.line_stats.non_empty_lines = 0;
-        stats_.line_stats.longest_line_length = 0;
-        stats_.line_stats.shortest_line_length = 0;
-        stats_.line_stats.average_line_length = 0.0;
-        return;
-    }
-
-    stats_.line_stats.total_lines = stats_.basic_stats.total_lines;
-    stats_.line_stats.non_empty_lines = stats_.basic_stats.non_empty_lines;
-
-    uint64_t currentLineLength = 0;
-    uint64_t totalLineLength = 0;
-    uint64_t lineCount = 0;
-
-    for (size_t i = 0; i < content.size(); ++i) {
-        unsigned char c = static_cast<unsigned char>(content[i]);
-
-        if (c == '\n') {
             if (lineCount > 0 || currentLineLength > 0) {
                 if (currentLineLength > stats_.line_stats.longest_line_length) {
                     stats_.line_stats.longest_line_length = currentLineLength;
@@ -429,111 +394,148 @@ void TextStats::countLineStats(const std::string& content) {
                 lineCount++;
             }
             currentLineLength = 0;
-        } else if (c != '\r') {
-            currentLineLength++;
-        }
-    }
 
-    if (currentLineLength > 0 || (content.back() != '\n' && lineCount > 0)) {
-        if (currentLineLength > stats_.line_stats.longest_line_length) {
-            stats_.line_stats.longest_line_length = currentLineLength;
-        }
-        if (currentLineLength < stats_.line_stats.shortest_line_length) {
-            stats_.line_stats.shortest_line_length = currentLineLength;
-        }
-        totalLineLength += currentLineLength;
-        lineCount++;
-    }
-
-    if (lineCount == 0 && !content.empty()) {
-        lineCount = 1;
-        totalLineLength = content.size();
-        stats_.line_stats.longest_line_length = content.size();
-        stats_.line_stats.shortest_line_length = content.size();
-    }
-
-    if (lineCount > 0) {
-        stats_.line_stats.average_line_length = static_cast<double>(totalLineLength) / lineCount;
-    } else {
-        stats_.line_stats.longest_line_length = 0;
-        stats_.line_stats.shortest_line_length = 0;
-        stats_.line_stats.average_line_length = 0.0;
-    }
-}
-
-void TextStats::countWordStats(const std::string& content) {
-    std::unordered_map<std::string, uint64_t> wordCount;
-    std::string currentWord;
-
-    for (size_t i = 0; i < content.size(); ++i) {
-        unsigned char c = static_cast<unsigned char>(content[i]);
-
-        bool isWordChar = std::isalnum(c) || c == '_' || c == '\'';
-
-        if (isWordChar) {
-            currentWord += static_cast<char>(std::tolower(c));
-        } else {
             if (!currentWord.empty()) {
                 wordCount[currentWord]++;
                 currentWord.clear();
             }
+        } else if (codepoint == '\r') {
+        } else if ((codepoint >= 'A' && codepoint <= 'Z') ||
+                   (codepoint >= 'a' && codepoint <= 'z')) {
+            stats_.category_stats.letters++;
+            if (!inLine) inLine = true;
+            currentLineLength++;
+
+            if (isWordChar(codepoint)) {
+                currentWord += toLowerChar(codepoint);
+            }
+        } else if (codepoint >= '0' && codepoint <= '9') {
+            stats_.category_stats.digits++;
+            if (!inLine) inLine = true;
+            currentLineLength++;
+
+            if (isWordChar(codepoint)) {
+                currentWord += static_cast<char>(codepoint);
+            }
+        } else if (isChineseChar(codepoint)) {
+            stats_.category_stats.chinese++;
+            if (!inLine) inLine = true;
+            currentLineLength++;
+
+            if (!currentWord.empty()) {
+                wordCount[currentWord]++;
+                currentWord.clear();
+            }
+        } else {
+            if (isPunctuationCodepoint(codepoint)) {
+                stats_.category_stats.punctuations++;
+            }
+            if (!inLine && !isWhitespace) inLine = true;
+            if (!isWhitespace) {
+                currentLineLength++;
+            }
+
+            if (isWordChar(codepoint)) {
+                currentWord += static_cast<char>(codepoint);
+            } else if (!currentWord.empty()) {
+                wordCount[currentWord]++;
+                currentWord.clear();
+            }
         }
+
+        i += charLen;
     }
 
     if (!currentWord.empty()) {
         wordCount[currentWord]++;
     }
 
-    uint64_t totalWords = 0;
-    for (const auto& pair : wordCount) {
-        totalWords += pair.second;
+    stats_.basic_stats.total_chars = charCount;
+    stats_.basic_stats.chars_without_spaces = charCountWithoutSpaces;
+    stats_.basic_stats.chars_without_whitespace = charCountWithoutWhitespace;
+
+    uint32_t lastCodepoint = 0;
+    if (!content.empty()) {
+        size_t lastPos = content.size() - 1;
+        while (lastPos > 0 && isUTF8 && (static_cast<unsigned char>(content[lastPos]) & 0xC0) == 0x80) {
+            lastPos--;
+        }
+        unsigned char lastChar = static_cast<unsigned char>(content[lastPos]);
+        lastCodepoint = lastChar;
+        if (isUTF8 && lastPos + 1 < content.size() && (lastChar & 0xE0) == 0xC0) {
+            lastCodepoint = ((lastChar & 0x1F) << 6) | (static_cast<unsigned char>(content[lastPos+1]) & 0x3F);
+        }
     }
+
+    if (!content.empty() && lastCodepoint != '\n') {
+        stats_.basic_stats.total_lines++;
+        if (inLine) {
+            stats_.basic_stats.non_empty_lines++;
+        }
+
+        if (currentLineLength > 0 || (lineCount > 0 && lastCodepoint != '\n')) {
+            if (currentLineLength > stats_.line_stats.longest_line_length) {
+                stats_.line_stats.longest_line_length = currentLineLength;
+            }
+            if (currentLineLength < stats_.line_stats.shortest_line_length) {
+                stats_.line_stats.shortest_line_length = currentLineLength;
+            }
+            totalLineLength += currentLineLength;
+            lineCount++;
+        }
+    }
+
+    if (lineCount == 0 && !content.empty()) {
+        lineCount = 1;
+        totalLineLength = charCount;
+        stats_.line_stats.longest_line_length = charCount;
+        stats_.line_stats.shortest_line_length = charCount;
+    }
+
+    if (lineCount > 0) {
+        stats_.line_stats.total_lines = stats_.basic_stats.total_lines;
+        stats_.line_stats.non_empty_lines = stats_.basic_stats.non_empty_lines;
+        stats_.line_stats.average_line_length = static_cast<double>(totalLineLength) / lineCount;
+    } else {
+        stats_.line_stats.longest_line_length = 0;
+        stats_.line_stats.shortest_line_length = 0;
+        stats_.line_stats.average_line_length = 0.0;
+    }
+
+    calculateTopWords(wordCount);
+}
+
+void TextStats::calculateTopWords(const std::unordered_map<std::string, uint64_t>& wordCount) {
+    uint64_t totalWords = calculateTotalWords(wordCount);
 
     stats_.word_stats.total_words = totalWords;
     stats_.word_stats.unique_words = static_cast<uint64_t>(wordCount.size());
 
-    auto compare = [](const std::pair<std::string, uint64_t>& a,
-                      const std::pair<std::string, uint64_t>& b) {
-        if (a.second != b.second) {
-            return a.second > b.second;
-        }
-        return a.first < b.first;
-    };
+    if (wordCount.empty()) {
+        return;
+    }
 
-    std::priority_queue<
-        std::pair<std::string, uint64_t>,
-        std::vector<std::pair<std::string, uint64_t>>,
-        decltype(compare)
-    > minHeap(compare);
+    std::vector<std::pair<std::string, uint64_t>> wordsVec(wordCount.begin(), wordCount.end());
 
-    const size_t TOP_COUNT = 10;
-
-    for (const auto& pair : wordCount) {
-        if (minHeap.size() < TOP_COUNT) {
-            minHeap.push(pair);
-        } else {
-            const auto& topPair = minHeap.top();
-            if (pair.second > topPair.second ||
-                (pair.second == topPair.second && pair.first < topPair.first)) {
-                minHeap.pop();
-                minHeap.push(pair);
+    std::sort(wordsVec.begin(), wordsVec.end(),
+        [](const std::pair<std::string, uint64_t>& a,
+           const std::pair<std::string, uint64_t>& b) {
+            if (a.second != b.second) {
+                return a.second > b.second;
             }
-        }
-    }
-
-    std::vector<std::pair<std::string, uint64_t>> wordsVec;
-    while (!minHeap.empty()) {
-        wordsVec.push_back(minHeap.top());
-        minHeap.pop();
-    }
-
-    std::reverse(wordsVec.begin(), wordsVec.end());
+            return a.first < b.first;
+        });
 
     stats_.word_stats.top_words.clear();
-    for (const auto& pair : wordsVec) {
+    size_t count = std::min(TOP_WORDS_COUNT, wordsVec.size());
+    for (size_t i = 0; i < count; ++i) {
         WordFrequency wf;
-        wf.word = pair.first;
-        wf.count = pair.second;
+        wf.word = wordsVec[i].first;
+        wf.count = wordsVec[i].second;
         stats_.word_stats.top_words.push_back(wf);
     }
+}
+
+const TextStatistics& TextStats::getStatistics() const {
+    return stats_;
 }
