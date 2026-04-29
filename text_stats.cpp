@@ -810,8 +810,7 @@ void TextStats::finalizeLineStats(uint32_t lastCodepoint,
                                     bool inLine,
                                     uint64_t currentLineLength,
                                     uint64_t totalLineLength,
-                                    uint64_t lineCount,
-                                    uint64_t charCount) {
+                                    uint64_t lineCount) {
     if (lastCodepoint != '\n') {
         stats_.basic_stats.total_lines++;
         if (inLine) {
@@ -830,16 +829,18 @@ void TextStats::finalizeLineStats(uint32_t lastCodepoint,
         }
     }
 
-    if (lineCount == 0 && charCount > 0) {
+    uint64_t totalChars = stats_.basic_stats.total_chars;
+    if (lineCount == 0 && totalChars > 0) {
         lineCount = 1;
-        totalLineLength = charCount;
-        stats_.line_stats.longest_line_length = charCount;
-        stats_.line_stats.shortest_line_length = charCount;
+        totalLineLength = totalChars;
+        stats_.line_stats.longest_line_length = totalChars;
+        stats_.line_stats.shortest_line_length = totalChars;
     }
 
+    stats_.line_stats.total_lines = stats_.basic_stats.total_lines;
+    stats_.line_stats.non_empty_lines = stats_.basic_stats.non_empty_lines;
+
     if (lineCount > 0) {
-        stats_.line_stats.total_lines = stats_.basic_stats.total_lines;
-        stats_.line_stats.non_empty_lines = stats_.basic_stats.non_empty_lines;
         stats_.line_stats.average_line_length = static_cast<double>(totalLineLength) / lineCount;
     } else {
         stats_.line_stats.longest_line_length = 0;
@@ -862,8 +863,6 @@ void TextStats::processAllEncodings(const std::string& content) {
 
     std::unordered_map<std::string, uint64_t> wordCount;
     std::string currentWord;
-
-    uint64_t charCount = 0;
 
     bool inLine = false;
     uint64_t currentLineLength = 0;
@@ -895,7 +894,6 @@ void TextStats::processAllEncodings(const std::string& content) {
         }
 
         lastCodepoint = uc.codepoint;
-        charCount++;
 
         countStatsFromCodepoint(uc.codepoint, inLine, currentLineLength, 
                                  totalLineLength, lineCount, currentWord, wordCount);
@@ -908,7 +906,7 @@ void TextStats::processAllEncodings(const std::string& content) {
     }
 
     finalizeLineStats(lastCodepoint, inLine, currentLineLength, 
-                       totalLineLength, lineCount, charCount);
+                       totalLineLength, lineCount);
 
     calculateTopWords(wordCount);
 }
