@@ -106,6 +106,11 @@ public:
     static uint32_t unicodeToLower(uint32_t codepoint);
     static std::string codepointToUTF8(uint32_t codepoint);
 
+    static bool isChineseCharOptimized(uint32_t codepoint);
+    static bool isHiraganaOptimized(uint32_t codepoint);
+    static bool isKatakanaOptimized(uint32_t codepoint);
+    static bool isHangulOptimized(uint32_t codepoint);
+
 private:
     TextStatistics stats_;
     uint64_t max_file_size_;
