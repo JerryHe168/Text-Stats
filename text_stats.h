@@ -5,6 +5,15 @@
 #include <string>
 #include <vector>
 #include <unordered_map>
+#include <cstddef>
+
+namespace TextStatsConstants {
+    constexpr size_t BOM_UTF8_LENGTH = 3;
+    constexpr size_t BOM_UTF16_LENGTH = 2;
+    constexpr size_t BOM_UTF32_LENGTH = 4;
+    constexpr size_t TOP_WORDS_COUNT = 10;
+    constexpr uint64_t DEFAULT_MAX_FILE_SIZE = 100ULL * 1024ULL * 1024ULL;
+}
 
 enum class Encoding {
     UNKNOWN,
@@ -76,23 +85,27 @@ public:
 #ifdef _WIN32
     bool analyzeFile(const std::wstring& filepath);
 #endif
+
     const TextStatistics& getStatistics() const;
+    uint64_t getMaxFileSize() const;
+    void setMaxFileSize(uint64_t maxSize);
 
     void reset();
 
 private:
     TextStatistics stats_;
+    uint64_t max_file_size_;
 
-    Encoding detectEncoding(const std::string& content);
-    bool isUTF8Valid(const std::string& content);
-    bool isChineseChar(uint32_t codepoint);
+    Encoding detectEncoding(const std::string& content) const;
+    bool isUTF8Valid(const std::string& content) const;
+    bool isChineseChar(uint32_t codepoint) const;
+    bool isWordChar(uint32_t codepoint) const;
+    char toLowerChar(uint32_t codepoint) const;
 
-    void countBasicStats(const std::string& content);
-    void countCategoryStats(const std::string& content);
-    void countUTF8Stats(const std::string& content);
+    void countAllStats(const std::string& content);
+    void calculateTopWords(const std::unordered_map<std::string, uint64_t>& wordCount);
 
-    void countLineStats(const std::string& content);
-    void countWordStats(const std::string& content);
+    bool analyzeContent(const std::string& filepath, const std::string& content, uint64_t fileSize);
 };
 
-#endif // TEXT_STATS_H
+#endif
